@@ -7,8 +7,41 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 import io
 import streamlit as st
-import ollama
+#import ollama
 
+from groq import Groq
+
+def analyze_with_groq(prompt, text):
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+
+    completion = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt + text
+            }
+        ],
+        temperature=0.3,
+    )
+
+    return completion.choices[0].message.content
+
+def generate_pdf(content):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer)
+    elements = []
+
+    styles = getSampleStyleSheet()
+    normal_style = styles["Normal"]
+
+    for line in content.split("\n"):
+        elements.append(Paragraph(line, normal_style))
+        elements.append(Spacer(1, 0.2 * inch))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
 st.title("ReqLens – AI Requirement Analyzer")
 
@@ -26,42 +59,71 @@ if uploaded_file:
 
     if st.button("Analyze"):
         with st.spinner("Analyzing document..."):
-            response = ollama.chat(
-            model='mistral',
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""
-You are a senior business analyst.
 
-Analyze the following document and respond strictly in this format:
+            prompt = """
+            You are a senior business analyst.
 
-Explicit Requirements:
-- bullet points
+            Analyze the following document and respond strictly in this format:
 
-Hidden Assumptions:
-- bullet points
+            Explicit Requirements:
+            - bullet points
 
-Missing Information:
-- bullet points
+            Hidden Assumptions:
+            - bullet points
 
-Potential Risks:
-- bullet points
+            Missing Information:
+            - bullet points
 
-Clarifying Questions:
-- bullet points
+            Potential Risks:
+            - bullet points
 
-Overall Risk Level:
-- Low / Medium / High
+            Clarifying Questions:
+            - bullet points
 
-Document:
-{text}
-"""
-                }
-            ]
-        )
+            Overall Risk Level:
+            - Low / Medium / High
 
-        result = response['message']['content']
+            Document:
+            """
+
+            result = analyze_with_groq(prompt, text)
+
+            # response = ollama.chat(
+            # model='mistral',
+            # messages=[
+            #     {
+            #         "role": "user",
+            #         "content": f"""
+            # You are a senior business analyst.
+            #
+            # Analyze the following document and respond strictly in this format:
+            #
+            # Explicit Requirements:
+            # - bullet points
+            #
+            # Hidden Assumptions:
+            # - bullet points
+            #
+            # Missing Information:
+            # - bullet points
+            #
+            # Potential Risks:
+            # - bullet points
+            #
+            # Clarifying Questions:
+            # - bullet points
+            #
+            # Overall Risk Level:
+            # - Low / Medium / High
+            #
+            # Document:
+            # {text}
+            # """
+            #     }
+            # ]
+            # )
+            #
+            # result = response['message']['content']
         risk_level = "Unknown"
 
         if "Low" in result:
@@ -84,3 +146,11 @@ Document:
 
         with st.expander("View Full Analysis"):
             st.markdown(result)
+            pdf_file = generate_pdf(result)
+
+            st.download_button(
+                label="📥 Download Analysis Report (PDF)",
+                data=pdf_file,
+                file_name="ReqLens_Report.pdf",
+                mime="application/pdf"
+            )
